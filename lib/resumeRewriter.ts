@@ -53,6 +53,52 @@ function buildKeywordsReport(jobDescription?: string, resumeText?: string){
   return { keywordsDetected: detected, keywordsUsed: used, keywordsMissing: missing };
 }
 
+// Heuristic relations to determine if a missing keyword can logically fit
+const KEYWORD_RELATIONS: Record<string, string[]> = {
+  "rest": ["api","apis","endpoint","endpoints"],
+  "graphql": ["api","apis","schema"],
+  "sql": ["database","databases","postgres","mysql","sqlite","query","queries"],
+  "postgres": ["database","sql"],
+  "mysql": ["database","sql"],
+  "ci/cd": ["pipeline","pipelines","github actions","gitlab ci","build","deploy"],
+  "docker": ["container","containers","image","compose"],
+  "kubernetes": ["cluster","pods","deployment","helm"],
+  "aws": ["cloud","s3","ec2","lambda"],
+  "gcp": ["cloud","gcs","compute"],
+  "azure": ["cloud"],
+  "typescript": ["javascript","ts"],
+  "react": ["component","spa","frontend","ui"],
+  "node": ["backend","server","api"],
+};
+
+function canSuggestKeyword(keyword:string, source:string): boolean {
+  const low = source.toLowerCase();
+  const rel = KEYWORD_RELATIONS[keyword.toLowerCase()] || [];
+  return rel.some(r => low.includes(r));
+}
+
+function suggestBulletInclusion(keyword:string, bullet:string): string | null {
+  // Try to attach keyword near a related term or after an existing noun
+  let s = bullet;
+  const low = s.toLowerCase();
+  const rel = KEYWORD_RELATIONS[keyword.toLowerCase()] || [];
+  for (const r of rel) {
+    const idx = low.indexOf(r);
+    if (idx >= 0) {
+      // Insert keyword before the related token if not already present
+      const before = s.slice(0, idx).trimEnd();
+      const after = s.slice(idx).trimStart();
+      const insertion = `${keyword.toUpperCase() === 'CI/CD' ? 'CI/CD' : keyword}`;
+      // Avoid duplicate if already there
+      if (!low.includes(keyword.toLowerCase())) {
+        const joined = `${before} ${insertion} ${after}`.replace(/\s+/g,' ').trim();
+        return limit25Words(joined);
+      }
+    }
+  }
+  return null;
+}
+
 function removeWeakStarters(line:string){
   let s=line.trim();
   for (const rx of WEAK_STARTERS){ s = s.replace(rx,""); }
@@ -161,6 +207,23 @@ export async function rewriteResume({ jobTitle, jobDescription, resumeText, stri
   // Build keywords report (frequency + role relevance heuristic)
   const keywordsReport = buildKeywordsReport(jobDescription, resumeText);
 
+  // Enhance keywords report with suggestions for missing keywords
+  const suggestions: { keyword: string; suggestion?: string; unsupported?: true }[] = [];
+  const flattenedBullets = parsed.sections.flatMap(s => (s.bullets.length ? s.bullets : s.lines));
+  (keywordsReport.keywordsMissing || []).forEach((kw) => {
+    const candidate = flattenedBullets.find(b => canSuggestKeyword(kw, b));
+    if (candidate) {
+      const improved = suggestBulletInclusion(kw, candidate);
+      if (improved) {
+        suggestions.push({ keyword: kw, suggestion: improved });
+        return;
+      }
+    }
+    suggestions.push({ keyword: kw, unsupported: true });
+  });
+
+  const enhancedKeywordsReport = { ...keywordsReport, suggestions };
+
   // Skills: group and list cleanly without rewriting into sentences; never invent
   const groupedSkills = extractSkills(jobDescription, resumeText);
   const skills = { // maintain old shape for UI compatibility and provide richer categories in skillsSections
@@ -215,7 +278,7 @@ export async function rewriteResume({ jobTitle, jobDescription, resumeText, stri
     // Provide richer categories as skillsSections while keeping 'skills' alias for compatibility
     skillsSections: groupedSkills as any,
     skills,
-    keywordsReport,
+    keywordsReport: enhancedKeywordsReport,
     rulesReport,
     parsedMeta: { sectionsDetected: parsed.sectionOrder, bulletsCount: parsed.allBullets.length },
   };
