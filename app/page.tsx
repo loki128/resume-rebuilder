@@ -70,7 +70,17 @@ export default function Home() {
         </form>
 
         <div className="mt-8">
-          <h2 className="text-lg font-medium mb-3">{loading ? 'Processing...' : 'Results'}</h2>
+          <h2 className="text-lg font-medium mb-2">{loading ? 'Processing...' : 'Results'}</h2>
+          {results?.parsedMeta && (
+            <div className="text-sm text-gray-600 mb-3">
+              Detected {results.parsedMeta.bulletsCount} bullet{results.parsedMeta.bulletsCount === 1 ? '' : 's'} across sections: {Array.isArray(results.parsedMeta.sectionsDetected) ? results.parsedMeta.sectionsDetected.join(', ') : 'n/a'}
+              {results.parsedMeta.bulletsCount < 3 && (
+                <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                  Fewer than 3 bullets detected — consider adding more detailed experience bullets for better results.
+                </div>
+              )}
+            </div>
+          )}
           <OutputBox data={results} />
         </div>
       </div>

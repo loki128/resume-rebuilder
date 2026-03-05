@@ -1,3 +1,5 @@
+import { parseResume, ParsedResume } from "@/lib/parseResume";
+
 type RewriteArgs = {
   jobTitle?: string;
   jobDescription?: string;
@@ -134,8 +136,8 @@ function maybeInjectMetric(bullet: string, allow: boolean): string {
   return bullet.endsWith(".") ? `${bullet} [X%]` : `${bullet} [X%]`;
 }
 
-function rewriteBullets(resumeText?: string, strictTruthMode?: boolean): string[] {
-  const lines = extractLines(resumeText);
+function rewriteBulletsFromParsed(parsed: ParsedResume, strictTruthMode?: boolean): string[] {
+  const lines = parsed.allBullets.length ? parsed.allBullets : parsed.sections.flatMap((s) => s.lines);
   if (lines.length === 0) return [];
 
   return lines
@@ -143,24 +145,18 @@ function rewriteBullets(resumeText?: string, strictTruthMode?: boolean): string[
       const clean = line.replace(/^[-•\s]+/, "").trim();
       if (!clean) return "";
 
-      // Choose an action verb and try to replace weak openings
       const verb = pickActionVerb(idx);
       const rewritten = clean
-        // Strengthen common weak starters
         .replace(/^Responsible for\s*/i, `${verb} `)
         .replace(/^Worked on\s*/i, `${verb} `)
         .replace(/^Helped\s*/i, `${verb} `)
         .replace(/^Assisted\s*/i, `${verb} `)
         .replace(/^Involved in\s*/i, `${verb} `)
-        // If no change and doesn't start with a verb, prefix one
         .replace(/^([a-z])/i, (m) => (/[A-Z]/.test(m) ? m : m.toUpperCase()));
 
-      const startsWithVerb = ACTION_VERBS.some((v) =>
-        rewritten.startsWith(v + " ")
-      );
+      const startsWithVerb = ACTION_VERBS.some((v) => rewritten.startsWith(v + " "));
       const finalLine = startsWithVerb ? rewritten : `${verb} ${rewritten}`;
 
-      // ATS-friendly tweaks
       const ats = finalLine
         .replace(/\butilized\b/gi, "used")
         .replace(/\bleveraged\b/gi, "used")
@@ -196,9 +192,12 @@ function buildKeywordsReport(jobDescription?: string, resumeText?: string) {
 }
 
 export async function rewriteResume({ jobTitle, jobDescription, resumeText, strictTruthMode = true }: RewriteArgs) {
+  // Parse resume to extract sections/bullets first
+  const parsed = parseResume(resumeText);
   const { coreCompetencies, skillsSections } = extractSkillsAndResponsibilities(jobDescription);
 
-  const rewrittenBullets = rewriteBullets(resumeText, strictTruthMode);
+  // Rewrite using parsed bullets/lines
+  const rewrittenBullets = rewriteBulletsFromParsed(parsed, strictTruthMode);
 
   // Ensure we don't invent tools/certs/numbers: limit skills to items present in resume when appropriate
   const resumeTokens = unique(tokenize(resumeText || ""));
@@ -220,5 +219,9 @@ export async function rewriteResume({ jobTitle, jobDescription, resumeText, stri
     skillsSections: skills, // per instruction naming
     skills, // alias for UI compatibility
     keywordsReport,
+    parsedMeta: {
+      sectionsDetected: parsed.sectionOrder,
+      bulletsCount: parsed.allBullets.length,
+    },
   };
 }
