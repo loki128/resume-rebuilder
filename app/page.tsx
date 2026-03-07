@@ -12,11 +12,13 @@ export default function Home() {
   const [resumeText, setResumeText] = useState("");
   const [strictTruthMode, setStrictTruthMode] = useState(true);
   const [results, setResults] = useState<any | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
-    e.preventDefault(); // prevent page refresh
+    e.preventDefault();
     setResults(null);
+    setError(null);
     setLoading(true);
 
     try {
@@ -26,14 +28,18 @@ export default function Home() {
         body: JSON.stringify({ jobTitle, jobDescription, resumeText, strictTruthMode }),
       });
 
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setResults({ error: `API error: ${res.status} ${res.statusText}` });
-      } else {
-        const data = await res.json();
-        setResults(data);
+        setError(data?.error || `API error ${res.status}`);
+        setResults(null);
+        return;
       }
+      setResults(data);
+      setError(null);
+      console.log("enhance:done");
     } catch (err) {
-      setResults({ error: 'Failed to call API', message: err instanceof Error ? err.message : 'Unknown error' });
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setResults(null);
     } finally {
       setLoading(false);
     }
@@ -71,6 +77,11 @@ export default function Home() {
 
         <div className="mt-8">
           <h2 className="text-lg font-medium mb-2">{loading ? 'Processing...' : 'Results'}</h2>
+          {results?.llmUsed === false && results?.llmError && (
+            <div className="text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-3 text-sm">
+              LLM unavailable: {results.llmError}. Results use rule-based enhancement.
+            </div>
+          )}
           {results?.parsedMeta && (
             <div className="text-sm text-gray-600 mb-3">
               Detected {results.parsedMeta.bulletsCount} bullet{results.parsedMeta.bulletsCount === 1 ? '' : 's'} across sections: {Array.isArray(results.parsedMeta.sectionsDetected) ? results.parsedMeta.sectionsDetected.join(', ') : 'n/a'}
@@ -81,7 +92,7 @@ export default function Home() {
               )}
             </div>
           )}
-          <OutputBox data={results} />
+          <OutputBox data={error ? { error } : results} />
         </div>
       </div>
     </div>

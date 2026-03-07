@@ -95,8 +95,18 @@ export function parseResume(resumeText?: string): ParsedResume {
     return { sections: [{ name: "GENERAL", header: "GENERAL", bullets: [], lines: [] }], allBullets: [], sectionOrder: ["GENERAL"] };
   }
 
-  const allBullets = sections.flatMap((s) => s.bullets);
-  const sectionOrder = sections.map((s) => s.name);
+  // Remove duplicate sections (e.g. pasted resume twice): same name + same content = keep first only
+  const seen = new Set<string>();
+  const deduped: ParsedResumeSection[] = [];
+  for (const s of sections) {
+    const sig = `${s.name.toUpperCase()}\n${s.bullets.join("\n")}\n${s.lines.join("\n")}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    deduped.push(s);
+  }
 
-  return { sections, allBullets, sectionOrder };
+  const allBullets = deduped.flatMap((s) => s.bullets);
+  const sectionOrder = deduped.map((s) => s.name);
+
+  return { sections: deduped, allBullets, sectionOrder };
 }

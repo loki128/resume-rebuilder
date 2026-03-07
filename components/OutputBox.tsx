@@ -2,7 +2,7 @@ import React from "react";
 
 export default function OutputBox({ data }: { data: any }) {
   if (!data) return <div className="text-sm text-gray-500">No results yet.</div>;
-  
+
   // Handle errors
   if (data.error) {
     return (
